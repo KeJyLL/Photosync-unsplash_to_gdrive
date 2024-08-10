@@ -1,0 +1,66 @@
+var username = 'userName'; //Username of unSplash without @
+var accesskey = 'superUltraSecret'; //App API Accesskey of Unsplash
+
+var urlAccess = `/?client_id=${accesskey}`; //URL part of Accesstoken
+var url = String(`https://api.unsplash.com/users/${username}/collections${urlAccess}`); //UnsplashURLfor Usercollections
+var pagelimit = 30;
+var ssfn = 'Wallpaperlist'; //SpreadsheetFileName
+function getUnsplashFromURL() {
+   // Parse the JSON response in an Array
+   var unspl = JSON.parse(UrlFetchApp.fetch(url).getContentText());
+   return unspl;
+}
+function extractData() {
+  var us_data = getUnsplashFromURL();
+  var collections = [];
+  for (var x = 0; x < Object.keys(us_data).length; x++) {
+    collections.push([us_data[x].title, us_data[x].links.self, us_data[x].links.photos]);
+  }  
+  return collections;
+}
+function checkDownloadPhotos () {
+  var collections = extractData();
+  var ssf = DriveApp.getFilesByName(ssfn).next();
+  var ss = SpreadsheetApp.open(ssf);
+  var usfs = [] ; //Foldersheets that may missing
+  for (var y = 0; y < Object.keys(collections).length; y++) {
+    if (ss.getSheetByName(collections[y][0]) == null) {
+      //console.log("got it");
+      var cell = ss.insertSheet(collections[y][0]);
+      usfs.push(collections[y][0]);
+      var usnf = DriveApp.getFoldersByName("Wallpaper").next(); 
+      var nf = usnf.createFolder(collections[y][0]);
+    }
+    var urltotalphotos = collections[y][1]+urlAccess;
+    var totalPhotos = JSON.parse(UrlFetchApp.fetch(urltotalphotos).getContentText());
+    var totalPhotos = totalPhotos.total_photos;
+    var totalPages = Math.ceil(totalPhotos / pagelimit);
+    var urlphotos = collections[y][2]+urlAccess;
+    var destination = DriveApp.getFoldersByName(collections[y][0]).next();
+    var currentsheet = ss.getSheetByName(collections[y][0]); // s = Sheet (spezifisches Tabellenblatt)
+    for (var z = 1; z <= totalPages; z++) {
+      var urlpp = `&per_page=${pagelimit}&page=${z}`;  //max limit per page and pagenumber
+      urlphotos = urlphotos+urlpp;
+      var photos = JSON.parse(UrlFetchApp.fetch(urlphotos).getContentText());
+      for (var zy = 0; zy < Object.keys(photos).length; zy++) {
+        //console.log(photos[zy].id);
+        var photoId = photos[zy].id;
+        var photoURL = photos[zy].urls.raw;
+        var textFinder = currentsheet.createTextFinder(photos[zy].id).findNext();
+        if (textFinder == null) {
+          var firstEmptyRow = currentsheet.getLastRow() +1;
+          var blob = UrlFetchApp.fetch(photoURL).getBlob();
+          var file = DriveApp.createFile(blob);
+          file.moveTo(destination);
+          file.setName(`${photoId}.jpg`);
+          var cell = currentsheet.getRange("A" + firstEmptyRow); 
+          cell.setValue(photoId);
+        }
+        else {
+          continue
+        }
+      }
+    }
+  }
+}
+var xxx = checkDownloadPhotos();
